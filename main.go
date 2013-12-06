@@ -8,11 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -20,63 +22,8 @@ import (
 // maybe masqureade as you, through delegation, I think?
 // var authCertPriv = nil
 // var authCertPub = nil
-
-var myCert = `-----BEGIN CERTIFICATE-----
-MIIEUTCCAzmgAwIBAgIJAIuAxkQFMCqiMA0GCSqGSIb3DQEBBQUAMHgxCzAJBgNV
-BAYTAlVTMQ8wDQYDVQQIEwZPcmVnb24xETAPBgNVBAcTCFBvcnRsYW5kMQwwCgYD
-VQQKEwNOL0ExFzAVBgNVBAMTDkp1c3RpbiBBYnJhaG1zMR4wHAYJKoZIhvcNAQkB
-Fg9qdXN0aW5AYWJyYWgubXMwHhcNMTMxMjA0MTEwNjA1WhcNMzMxMTI5MTEwNjA1
-WjB4MQswCQYDVQQGEwJVUzEPMA0GA1UECBMGT3JlZ29uMREwDwYDVQQHEwhQb3J0
-bGFuZDEMMAoGA1UEChMDTi9BMRcwFQYDVQQDEw5KdXN0aW4gQWJyYWhtczEeMBwG
-CSqGSIb3DQEJARYPanVzdGluQGFicmFoLm1zMIIBIjANBgkqhkiG9w0BAQEFAAOC
-AQ8AMIIBCgKCAQEA0mY7snSPtvD2sW5T9Bh8fg+x5FiJj6J8cwDfiWjnhNggo+wg
-hV2AARX7mr7RjlP+2t5xl5G5b32vrW+BN7lzGhovVWMRGavmfbSiR5O8nAQqejtL
-MID0ju+xyvifEBzqzf+GckAAsCw8cnOfI3/g4jf5Jn7nFrM6HkGtmDQcAYAXCjbA
-y5WURMdB6LYibyF7DKNVHJCcxcF/hyc1urdHV3MxvAxrguC0ofZCe1pRBCQXvPUC
-FOxcSmVma08AsvI+KO3pasvyCeO09Ma3oReII3mTg838taLA80GDcLgrZW8/9NrH
-fFisJnTtdl0zdejUsSrTT6sryK4z3/uWjCaszwIDAQABo4HdMIHaMB0GA1UdDgQW
-BBSa/t+pEc1t4JDC8+nuhJySo+A5qDCBqgYDVR0jBIGiMIGfgBSa/t+pEc1t4JDC
-8+nuhJySo+A5qKF8pHoweDELMAkGA1UEBhMCVVMxDzANBgNVBAgTBk9yZWdvbjER
-MA8GA1UEBxMIUG9ydGxhbmQxDDAKBgNVBAoTA04vQTEXMBUGA1UEAxMOSnVzdGlu
-IEFicmFobXMxHjAcBgkqhkiG9w0BCQEWD2p1c3RpbkBhYnJhaC5tc4IJAIuAxkQF
-MCqiMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEFBQADggEBAGH59bYyChwURveS
-mIKczfRlBwlrKkhAoif+ouwb0+SOaFXtUYY+cXGm2z2CSpJNgVOTvIob3WGYmhDB
-DD5uBqgHiyCigO/9fDiGYTM8zv0pz40xniExl/v8aecU090/HoNH7YQucTfz7MEz
-ouKMU5vD02M/1V57Toy8KTo5he1qQvM1C4oYnz10t+iahY/0y3uMOUEGF52nYYGc
-PYrsLpCF7/UZ+dXQFqnlpBh0RXknUAh9vOQjch0mesQdhY4DBOi7GKZdp8EI8SNh
-DdrlyW4yBg/+Msek7P0CgCGsCieouz4JoGCzSTkL/xm6nTpqHtwREgjtyO+qbeZi
-O/CF+QA=
------END CERTIFICATE-----`
-
-var myPrivKey = `-----BEGIN RSA PRIVATE KEY-----
-MIIEogIBAAKCAQEA0mY7snSPtvD2sW5T9Bh8fg+x5FiJj6J8cwDfiWjnhNggo+wg
-hV2AARX7mr7RjlP+2t5xl5G5b32vrW+BN7lzGhovVWMRGavmfbSiR5O8nAQqejtL
-MID0ju+xyvifEBzqzf+GckAAsCw8cnOfI3/g4jf5Jn7nFrM6HkGtmDQcAYAXCjbA
-y5WURMdB6LYibyF7DKNVHJCcxcF/hyc1urdHV3MxvAxrguC0ofZCe1pRBCQXvPUC
-FOxcSmVma08AsvI+KO3pasvyCeO09Ma3oReII3mTg838taLA80GDcLgrZW8/9NrH
-fFisJnTtdl0zdejUsSrTT6sryK4z3/uWjCaszwIDAQABAoIBABdcrLJDCRYqKWpI
-MuA+u8wPmBQf1J5zT1hBt5B9an+ws+cft/i3ChiUxUxIdeJU506MNpa64plDnncm
-k3WJjQNP9wOHLYXpNX2tyfsip2W3fLP304B+QSmB6f78nkTewR/AiMA05R6quseG
-mRwK/gCAcJTasHQv0Hs9lbX5y0ZLLB35Vyis5zhRxmMtQ6T50O/H0H8K31wUTGzy
-9tyDPqqBGnUaQeyBZ0mt5j4BzKGWwiRRaKaxnRE+KrgZu7hPVQlC1GRNHRqDsNUj
-z1T96jx2OwJwe6qzcr/aFCq7T7IMrpd+hjCxe8eL55Kze+e7+I2Fk7/hXOkN+qY3
-6L2u2rECgYEA95FtEXWHeL41zxejBKVsq8hdrRaI3zv+KhPdrYG8EkLb/J6ksTod
-7Z1hX2zi1fx7D7lmT0yQXHK0xFr0JvuUwCgmV9nTR+N84BDlMj/mEgWDKZav+sGK
-NNwS61lLCqj8eodEkdUj7zMKatzIocvDbbq53lPPD+XUSPeqjZaPsKkCgYEA2ZC6
-lprCFrLA6m2ZivniwcWioCX+ympcIpKDRKBVnKg/FahEniYrBWNQHTYTwoktR6aP
-HyGinNpa+QSNy+OndlAmG5H5SJxdfzMDB8LgpX2HRAO4Xu0OVFIdCflCwcZABSGz
-a2ZGxLlzng29kRgV+8oBUsp/zkQOPVxjgW1+xLcCgYAxoROuVlNMH0WGOITTn54D
-ae1tj4Dsz4gKQ2VDLSjYuFKFeAAoDzCEu/ITQS7QGwdIhbA+4WhnQA+A9YLQdcrC
-Ispc/ive03nrKTfpNOoYXsaGhdDNghMEucGJMKNchbfnkEpsub+0ahUCizQlS0Xo
-L3CnY0G1PCusXQnxzGcN0QKBgA7aPIKvifR2u4jFdqfwKzTDQzjfnyc+X4/UpLV4
-pJ+PNM9Lr3OEc4dooj18RZkQOFEd48NiTnGazn8VeoCix/nhuthC/NuiIRff6aMM
-AL4LdcKE5n9Ee6fx+x2FMLN9zz0Kce8xCj+/0U7G7VwMYuPPhIucW2E/cCFsPzbE
-vNS9AoGAZWoeCsrox+mwtreXrcB0UABK6Kctb1o2PAE5xf6SQs2CSwSfGgMGoYWj
-Urqc4zd5OUhWUxE8pmKQ2ohtPSh+69AYxhRAJMmyiuWxKwsLt/4iFSc42hV35atj
-0F4pTyJ6co2YpLRUXx94LBsNfGpVxLLAcRiznR+XoVGLLaEx3b8=
------END RSA PRIVATE KEY-----`
-
-// var tlsCert = nil
+var privateKeyFile = flag.String("private-key-file", "", "Private key used to sign the certificate")
+var certFile = flag.String("cert-file", "", "Public key used to sign the certificate")
 
 type SubjectPublicKeyInfo struct {
 	Raw                 asn1.RawContent
@@ -108,7 +55,7 @@ func StringToSPKAC(b64hash string) (cert SignedPublicKeyAndChallenge, err error)
 	return
 }
 
-func handleCert(w http.ResponseWriter, req *http.Request) {
+func handleCert(w http.ResponseWriter, req *http.Request, privKey, pubKey string) {
 	// get posted username
 	// get email
 	// generate key request
@@ -129,10 +76,10 @@ func handleCert(w http.ResponseWriter, req *http.Request) {
 	// username := req.FormValue("username")
 	// email := req.FormValue("email")
 
-	serverPrivBlock, _ := pem.Decode([]byte(myPrivKey))
+	serverPrivBlock, _ := pem.Decode([]byte(privKey))
 
 	// TODO(justinabrahms): PEMs may be encrpyted?
-	block, _ := pem.Decode([]byte(myCert))
+	block, _ := pem.Decode([]byte(pubKey))
 
 	serverCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -239,12 +186,44 @@ func index(w http.ResponseWriter, req *http.Request) {
 `)
 }
 
+func fileToString(filename string) (string, error) {
+	var contents []byte
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	_, err = io.ReadFull(file, contents)
+	if err != nil {
+		return "", err
+	}
+
+	return string(contents), nil
+}
+
 // starts an http server which listens for posts, returning a
 // certificate or error.
 func main() {
+	flag.Parse()
+
+	myPrivKey, err := fileToString(*privateKeyFile)
+	if err != nil {
+		log.Fatalf("Unable to read contents of private key file.")
+	}
+
+	myCert, err := fileToString(*certFile)
+	if err != nil {
+		log.Fatalf("Unable to read contents of public key file.")
+	}
+
 	// TODO(justinabrahms): Move this to TLS
 	http.HandleFunc("/", index)
-	http.HandleFunc("/gen-key", handleCert)
+
+	// TODO(justinabrahms): Should consider moving this anonymous function to a gorilla context or similar?
+	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
+		handleCert(w, req, myPrivKey, myCert)
+	})
 
 	port := 8001
 	ip := "0.0.0.0"
