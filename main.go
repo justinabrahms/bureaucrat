@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -55,7 +56,7 @@ func StringToSPKAC(b64hash string) (cert SignedPublicKeyAndChallenge, err error)
 	return
 }
 
-func handleCert(w http.ResponseWriter, req *http.Request, privKey, pubKey string) {
+func handleCert(w http.ResponseWriter, req *http.Request, privKey string, serverCert *x509.Certificate) {
 	// get posted username
 	// get email
 	// generate key request
@@ -77,16 +78,6 @@ func handleCert(w http.ResponseWriter, req *http.Request, privKey, pubKey string
 	// email := req.FormValue("email")
 
 	serverPrivBlock, _ := pem.Decode([]byte(privKey))
-
-	// TODO(justinabrahms): PEMs may be encrpyted?
-	block, _ := pem.Decode([]byte(pubKey))
-
-	serverCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Can't parse cert: ", err))
-		return
-	}
-
 	serverPrivRsa, err := x509.ParsePKCS1PrivateKey(serverPrivBlock.Bytes)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Couldn't load server's RSA key: %s", err))
@@ -186,20 +177,31 @@ func index(w http.ResponseWriter, req *http.Request) {
 `)
 }
 
-func fileToString(filename string) (string, error) {
-	var contents []byte
+func fileToString(filename string) ([]byte, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer file.Close()
 
-	_, err = io.ReadFull(file, contents)
+	contents, err := ioutil.ReadAll(file)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(contents), nil
+	return contents, nil
+}
+
+func certFromFile(filename string) (cert *x509.Certificate, err error) {
+	certString, err := fileToString(filename)
+	if err != nil {
+		return
+	}
+
+	// TODO(justinabrahms): PEMs may be encrpyted?
+	block, _ := pem.Decode(certString)
+	cert, err = x509.ParseCertificate(block.Bytes)
+	return
 }
 
 // starts an http server which listens for posts, returning a
@@ -209,12 +211,12 @@ func main() {
 
 	myPrivKey, err := fileToString(*privateKeyFile)
 	if err != nil {
-		log.Fatalf("Unable to read contents of private key file.")
+		log.Fatalf("Unable to read contents of private key file. %s", err)
 	}
 
-	myCert, err := fileToString(*certFile)
+	myCert, err := certFromFile(*certFile)
 	if err != nil {
-		log.Fatalf("Unable to read contents of public key file.")
+		log.Fatalf("Unable to read contents of public key file. %s", err)
 	}
 
 	// TODO(justinabrahms): Move this to TLS
@@ -222,7 +224,7 @@ func main() {
 
 	// TODO(justinabrahms): Should consider moving this anonymous function to a gorilla context or similar?
 	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
-		handleCert(w, req, myPrivKey, myCert)
+		handleCert(w, req, string(myPrivKey), myCert)
 	})
 
 	port := 8001
