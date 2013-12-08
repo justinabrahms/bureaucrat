@@ -15,7 +15,6 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -56,7 +55,7 @@ func StringToSPKAC(b64hash string) (cert SignedPublicKeyAndChallenge, err error)
 	return
 }
 
-func handleCert(w http.ResponseWriter, req *http.Request, privKey string, serverCert *x509.Certificate) {
+func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.PrivateKey, serverCert *x509.Certificate) {
 	// get posted username
 	// get email
 	// generate key request
@@ -76,13 +75,6 @@ func handleCert(w http.ResponseWriter, req *http.Request, privKey string, server
 	clientPubkey := req.FormValue("pubkey")
 	// username := req.FormValue("username")
 	// email := req.FormValue("email")
-
-	serverPrivBlock, _ := pem.Decode([]byte(privKey))
-	serverPrivRsa, err := x509.ParsePKCS1PrivateKey(serverPrivBlock.Bytes)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Couldn't load server's RSA key: %s", err))
-		return
-	}
 
 	spkac, err := StringToSPKAC(clientPubkey)
 	if err != nil {
@@ -129,7 +121,7 @@ func handleCert(w http.ResponseWriter, req *http.Request, privKey string, server
 	}
 
 	// use the _ below, rather than ignoring it.
-	cert, err := x509.CreateCertificate(nil, &template, serverCert, clientPubRsa, serverPrivRsa)
+	cert, err := x509.CreateCertificate(nil, &template, serverCert, clientPubRsa, serverPrivateRsa)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Unable to create certificate. %s\n\n", err))
 		return
@@ -179,8 +171,14 @@ func index(w http.ResponseWriter, req *http.Request) {
 
 func certFromPem(certBytes []byte) (cert *x509.Certificate, err error) {
 	// TODO(justinabrahms): PEMs may be encrpyted?
-	block, _ := pem.Decode(string(certBytes))
+	block, _ := pem.Decode(certBytes)
 	cert, err = x509.ParseCertificate(block.Bytes)
+	return
+}
+
+func privFromString(privKey string) (serverPrivRsa *rsa.PrivateKey, err error) {
+	serverPrivBlock, _ := pem.Decode([]byte(privKey))
+	serverPrivRsa, err = x509.ParsePKCS1PrivateKey(serverPrivBlock.Bytes)
 	return
 }
 
@@ -204,12 +202,17 @@ func main() {
 		log.Fatalf("Unable to read contents of public key file. %s", err)
 	}
 
+	serverPrivateKey, err := privFromString(string(myPrivKey))
+	if err != nil {
+		log.Fatalf("Unable to read server's private key. %s", err)
+	}
+
 	// TODO(justinabrahms): Move this to TLS
 	http.HandleFunc("/", index)
 
 	// TODO(justinabrahms): Should consider moving this anonymous function to a gorilla context or similar?
 	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
-		handleCert(w, req, string(myPrivKey), myCert)
+		handleCert(w, req, serverPrivateKey, myCert)
 	})
 
 	port := 8001
