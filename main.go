@@ -18,10 +18,6 @@ import (
 	"time"
 )
 
-// important that these two certs are different, else someone could
-// maybe masqureade as you, through delegation, I think?
-// var authCertPriv = nil
-// var authCertPub = nil
 var privateKeyFile = flag.String("private-key-file", "", "Private key used to sign the certificate")
 var certFile = flag.String("cert-file", "", "Public key used to sign the certificate")
 
@@ -70,21 +66,12 @@ func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub rsa.PublicKey, err
 }
 
 func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.PrivateKey, serverCert *x509.Certificate) {
-	// get posted username
-	// get email
-	// generate key request
-	// sign key
 	if err := req.ParseForm(); err != nil {
 		io.WriteString(w, fmt.Sprintf("Error parsing form: %s", err))
 		return
 	}
 
 	fmt.Printf("Got the request with params: %s\n", req.Form)
-
-	// apparently this pubkey+challenge is DER encoded, signed,
-	// then b64'd. I'm not sure if this is actually important for
-	// my purposes. Because it's signed, I can't possibly get the
-	// original key. b64 decoding might be important, however.
 
 	clientPubkey := req.FormValue("pubkey")
 	// username := req.FormValue("username")
@@ -103,11 +90,10 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 
 	// What's the role of challenge? Is that like a csrf token or similar?
 
-	// pemBlock := pem.Block{
-	// 	Bytes: spkac.PublicKeyAndChallenge.Spki.PublicKey.Bytes,
-	// 	Type:  "RSA PUBLIC KEY",
-	// }
-	// pem.Encode(w, &pemBlock)
+	// TODO(justinabrahms): Not in love with this certificate
+	// generation being here. I'd prefer it in a method, but can't
+	// think of a way that is overridable and nice without having
+	// a ton of parameters.
 
 	certStart := time.Now()
 	certExpire := certStart.Add(365 * 24 * time.Hour)
@@ -126,19 +112,12 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 		BasicConstraintsValid: true,
 	}
 
-	// use the _ below, rather than ignoring it.
 	cert, err := x509.CreateCertificate(nil, &template, serverCert, clientPubRsa, serverPrivateRsa)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Unable to create certificate. %s\n\n", err))
 		return
 	}
 
-	// io.WriteString(w, fmt.Sprintf("omg. I have a cert. %v", cert))
-
-	// // should respond with a Content-Type of  "application/x-x509-user-cert"
-	// // and a body of the signed key
-	// resp := fmt.Sprintf("ohai!\n\nFound:\n\tKey:%s\n\tusername:%s\n\temail:%s\n", clientPubkey, username, email)
-	// io.WriteString(w, resp)
 	w.Header().Set("Content-Type", "application/x-x509-user-cert")
 	w.Write(cert)
 }
@@ -213,10 +192,7 @@ func main() {
 		log.Fatalf("Unable to read server's private key. %s", err)
 	}
 
-	// TODO(justinabrahms): Move this to TLS
 	http.HandleFunc("/", index)
-
-	// TODO(justinabrahms): Should consider moving this anonymous function to a gorilla context or similar?
 	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
 		handleCert(w, req, serverPrivateKey, myCert)
 	})
@@ -224,6 +200,7 @@ func main() {
 	port := 8001
 	ip := "0.0.0.0"
 	fmt.Printf("Listening on port %d\n", port)
+	// TODO(justinabrahms): Move this to TLS
 	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", ip, port), nil); err != nil {
 		log.Fatal("Could not listen for requests: ", err)
 	}
