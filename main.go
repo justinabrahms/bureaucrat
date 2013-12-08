@@ -55,6 +55,20 @@ func StringToSPKAC(b64hash string) (cert SignedPublicKeyAndChallenge, err error)
 	return
 }
 
+func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub rsa.PublicKey, err error) {
+	// TODO(justinabrahms): Digging into collaborators? Or just dumb object access?
+	clientPubRsaInterface, err := x509.ParsePKIXPublicKey(spkac.PublicKeyAndChallenge.Spki.Raw)
+	if err != nil {
+		return
+	}
+
+	pub, ok := clientPubRsaInterface.(*rsa.PublicKey)
+	if !ok {
+		err = errors.New("Was unable to convert the Public Key interface to the rsa Type.")
+		return
+	}
+}
+
 func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.PrivateKey, serverCert *x509.Certificate) {
 	// get posted username
 	// get email
@@ -81,6 +95,11 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 		io.WriteString(w, fmt.Sprintf("%s", err))
 		return
 	}
+	clientPubRsa, err := SpkacToPublicRsa(spkac)
+	if err != nil {
+		io.WriteString(w, fmt.Sprintf("Unable to convert the signed public key to a public RSA. %s", err))
+		return
+	}
 
 	// What's the role of challenge? Is that like a csrf token or similar?
 
@@ -89,19 +108,6 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 	// 	Type:  "RSA PUBLIC KEY",
 	// }
 	// pem.Encode(w, &pemBlock)
-
-	// TODO(justinabrahms): Digging into collaborators? Or just dumb object access?
-	clientPubRsaInterface, err := x509.ParsePKIXPublicKey(spkac.PublicKeyAndChallenge.Spki.Raw)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Error parsing public key: %s\n\n", err))
-		return
-	}
-
-	clientPubRsa, ok := clientPubRsaInterface.(*rsa.PublicKey)
-	if !ok {
-		io.WriteString(w, "Error in typecast to a public key")
-		return
-	}
 
 	certStart := time.Now()
 	certExpire := certStart.Add(365 * 24 * time.Hour)
