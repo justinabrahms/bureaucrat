@@ -177,29 +177,9 @@ func index(w http.ResponseWriter, req *http.Request) {
 `)
 }
 
-func fileToString(filename string) ([]byte, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	contents, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-
-	return contents, nil
-}
-
-func certFromFile(filename string) (cert *x509.Certificate, err error) {
-	certString, err := fileToString(filename)
-	if err != nil {
-		return
-	}
-
+func certFromPem(certBytes []byte) (cert *x509.Certificate, err error) {
 	// TODO(justinabrahms): PEMs may be encrpyted?
-	block, _ := pem.Decode(certString)
+	block, _ := pem.Decode(string(certBytes))
 	cert, err = x509.ParseCertificate(block.Bytes)
 	return
 }
@@ -209,12 +189,17 @@ func certFromFile(filename string) (cert *x509.Certificate, err error) {
 func main() {
 	flag.Parse()
 
-	myPrivKey, err := fileToString(*privateKeyFile)
+	myPrivKey, err := ioutil.ReadFile(*privateKeyFile)
 	if err != nil {
 		log.Fatalf("Unable to read contents of private key file. %s", err)
 	}
 
-	myCert, err := certFromFile(*certFile)
+	certContents, err := ioutil.ReadFile(*certFile)
+	if err != nil {
+		log.Fatalf("Unable to read contents of certification file. %s", err)
+	}
+
+	myCert, err := certFromPem(certContents)
 	if err != nil {
 		log.Fatalf("Unable to read contents of public key file. %s", err)
 	}
