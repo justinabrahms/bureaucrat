@@ -55,7 +55,7 @@ func StringToSPKAC(b64hash string) (cert SignedPublicKeyAndChallenge, err error)
 	return
 }
 
-func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub rsa.PublicKey, err error) {
+func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub *rsa.PublicKey, err error) {
 	// TODO(justinabrahms): Digging into collaborators? Or just dumb object access?
 	clientPubRsaInterface, err := x509.ParsePKIXPublicKey(spkac.PublicKeyAndChallenge.Spki.Raw)
 	if err != nil {
@@ -65,8 +65,8 @@ func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub rsa.PublicKey, err
 	pub, ok := clientPubRsaInterface.(*rsa.PublicKey)
 	if !ok {
 		err = errors.New("Was unable to convert the Public Key interface to the rsa Type.")
-		return
 	}
+	return
 }
 
 func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.PrivateKey, serverCert *x509.Certificate) {
