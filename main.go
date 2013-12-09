@@ -82,13 +82,14 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 
 	clientPubkey := req.FormValue("pubkey")
 	// username := req.FormValue("username")
-	// email := req.FormValue("email")
+	email := req.FormValue("email")
 
 	spkac, err := StringToSPKAC(clientPubkey)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("%s", err))
 		return
 	}
+
 	clientPubRsa, err := SpkacToPublicRsa(spkac)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Unable to convert the signed public key to a public RSA. %s", err))
@@ -122,6 +123,7 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 
 		Subject: pkix.Name{
 			Organization: []string{"Justin Abrahm's silly test."},
+			CommonName:   fmt.Sprintf("%s", email),
 		},
 		NotBefore: certStart,
 		NotAfter:  certExpire,
