@@ -6,6 +6,7 @@ package main
 
 import (
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -23,7 +24,9 @@ import (
 )
 
 var privateKeyFile = flag.String("private-key-file", "", "Private key used to sign the certificate")
-var certFile = flag.String("cert-file", "", "Public key used to sign the certificate")
+var certFile = flag.String("signing-cert-file", "", "Server's certificate used to sign client authentication certs")
+var httpCert = flag.String("web-cert-file", "", "Certificate used for serving TLS traffic. Should be different than above.")
+var httpPrivateKey = flag.String("web-private-key", "", "Private key associated with the web-cert-file")
 
 type SubjectPublicKeyInfo struct {
 	Raw                 asn1.RawContent
@@ -208,16 +211,24 @@ func main() {
 		log.Fatalf("Unable to read server's private key. %s", err)
 	}
 
+	port := 8001
+	ip := "0.0.0.0"
+
+	server := http.Server{
+		Addr: fmt.Sprintf("%s:%d", ip, port),
+		TLSConfig: &tls.Config{
+			ClientAuth: tls.RequestClientCert,
+		},
+	}
+
 	http.HandleFunc("/", index)
 	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
 		handleCert(w, req, serverPrivateKey, myCert)
 	})
 
-	port := 8001
-	ip := "0.0.0.0"
 	fmt.Printf("Listening on port %d\n", port)
 	// TODO(justinabrahms): Move this to TLS
-	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", ip, port), nil); err != nil {
+	if err := server.ListenAndServeTLS(*httpCert, *httpPrivateKey); err != nil {
 		log.Fatal("Could not listen for requests: ", err)
 	}
 }
