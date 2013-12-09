@@ -1,5 +1,9 @@
 package main
 
+// Thanks to the folks behind
+// http://www.zytrax.com/tech/survival/ssl.html which helped me make
+// sense of x509 certs!
+
 import (
 	"crypto/rsa"
 	"crypto/x509"
@@ -100,7 +104,19 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 
 	// TODO(justinabrahms): Figure out what these items actually mean instead of copypasta.
 	template := x509.Certificate{
+		// TODO(justinabrahms): I should really have an Issuer: pkix.Name{} here, for validation purposes.
+		// ^^ Maybe only important if I have a legitimately signed cert?
+		// Somehow information in Issuer and stuff in the Subject may need to be the same?
+
+		// SerialNumber should be unique, as it's used for revokation purposes.
 		SerialNumber: new(big.Int).SetInt64(0),
+
+		// TODO(justinabrahms): Subject should generate a
+		// CommonName thing here which points to the userid
+		// somehow. Another possibility would be something
+		// like: www.example.com/emailAddress=foo@example.org
+		// (I don't think they need to be the same)
+
 		Subject: pkix.Name{
 			Organization: []string{"Justin Abrahm's silly test."},
 		},
