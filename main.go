@@ -73,6 +73,7 @@ func SpkacToPublicRsa(spkac SignedPublicKeyAndChallenge) (pub *rsa.PublicKey, er
 }
 
 func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.PrivateKey, serverCert *x509.Certificate) {
+	fmt.Println("CERT")
 	if err := req.ParseForm(); err != nil {
 		io.WriteString(w, fmt.Sprintf("Error parsing form: %s", err))
 		return
@@ -143,18 +144,41 @@ func handleCert(w http.ResponseWriter, req *http.Request, serverPrivateRsa *rsa.
 	w.Write(cert)
 }
 
-func ContainsValidKey(req *http.Request) bool {
+func ContainsValidKey(req *http.Request) (identifier string, err error) {
+	// actually, I think the server validates they keys? Is that correct? See: tls.ClientAuthType
+
+	fmt.Printf("Current TLS bits: %#v\n\n\n", req.TLS)
+	fmt.Printf("Current request: %#v\n\n\n", req)
+	// in what case would there be multiple client certs?
+	if len(req.TLS.PeerCertificates) != 1 {
+		err = fmt.Errorf("Expected exactly 1 client certificate. There were %d", len(req.TLS.PeerCertificates))
+	}
 	// should inspect the request for the public key.
-	return false
+	return
+}
+
+func authed(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("AUTH")
+	id, err := ContainsValidKey(req)
+	if err == nil {
+		// TODO(justinabrahms): this shouldn't return a bool,
+		// but rather info from inside the key? Common name.
+		io.WriteString(w, fmt.Sprintf("Hey %s, It looks like you're authed. Congrats!", id))
+		return
+	}
+	fmt.Println("Would 302.")
 }
 
 func index(w http.ResponseWriter, req *http.Request) {
-	if ContainsValidKey(req) {
+	fmt.Println("REQUEST")
+	id, err := ContainsValidKey(req)
+	if err == nil {
 		// TODO(justinabrahms): this shouldn't return a bool,
-		// but rather info from inside the key?
-		io.WriteString(w, "Looks like you're authed. Congrats!")
+		// but rather info from inside the key? Common name.
+		io.WriteString(w, fmt.Sprintf("Hey %s, It looks like you're authed. Congrats!", id))
 		return
 	}
+	fmt.Printf("KeyErr: %s\n\n", err)
 
 	// TODO(justinabrahms): conditionally 302 to login page.
 	// TODO(justinabrahms): Move this somewhere less in the way.
@@ -171,6 +195,7 @@ func index(w http.ResponseWriter, req *http.Request) {
    <input type="submit" name="createcert" value="Generate">
  </form>
  <strong>Wait a minute, then refresh this page over HTTPS to see your new cert in action!</strong>
+ <a href="/is-auth">Authed Area</a>
 </html>
 `)
 }
@@ -219,16 +244,19 @@ func main() {
 	server := http.Server{
 		Addr: fmt.Sprintf("%s:%d", ip, port),
 		TLSConfig: &tls.Config{
-			ClientAuth: tls.RequestClientCert,
+			// ClientAuth: tls.RequestClientCert,
+			ClientAuth: tls.RequireAnyClientCert,
 		},
 	}
 
 	http.HandleFunc("/", index)
 	http.HandleFunc("/gen-key", func(w http.ResponseWriter, req *http.Request) {
+		fmt.Println("genkey-pre")
 		handleCert(w, req, serverPrivateKey, myCert)
 	})
+	http.HandleFunc("/is-auth", authed)
 
-	fmt.Printf("Listening on port %d\n", port)
+	fmt.Printf("Listening on port: %d\n", port)
 	// TODO(justinabrahms): Move this to TLS
 	if err := server.ListenAndServeTLS(*httpCert, *httpPrivateKey); err != nil {
 		log.Fatal("Could not listen for requests: ", err)
